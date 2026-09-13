@@ -1,0 +1,93 @@
+name: Build Hoenn Reborn for Nintendo 3DS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: devkitpro/devkitarm:latest
+
+    steps:
+      - name: Install tools
+        run: |
+          apt-get update
+          apt-get install -y wget unzip
+
+          mkdir -p /opt/devkitpro/tools/bin
+
+          wget -q \
+            https://github.com/diasurgical/bannertool/releases/download/1.2.0/bannertool.zip \
+            -O /tmp/bannertool.zip
+
+          unzip -o /tmp/bannertool.zip -d /tmp/bannertool
+
+          find /tmp/bannertool -type f -name bannertool \
+            -exec cp {} /opt/devkitpro/tools/bin/bannertool \;
+
+          chmod +x /opt/devkitpro/tools/bin/bannertool
+
+          wget -q \
+            https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18/makerom-v0.18-ubuntu_x86_64.zip \
+            -O /tmp/makerom.zip
+
+          unzip -o /tmp/makerom.zip -d /tmp/makerom
+
+          find /tmp/makerom -type f -name makerom \
+            -exec cp {} /opt/devkitpro/tools/bin/makerom \;
+
+          chmod +x /opt/devkitpro/tools/bin/makerom
+
+      - name: Extract project
+        run: |
+          unzip -q Hoenn_Reborn_Milestone12_CIA_Ready.zip
+
+          PROJECT_DIR=$(find . -maxdepth 2 -type d -name "Hoenn_Reborn_FinalProgress" | head -n 1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Project directory not found"
+            exit 1
+          fi
+
+          cp -a "$PROJECT_DIR"/. .
+          rm -rf "$PROJECT_DIR"
+
+      - name: Validate project
+        run: |
+          make validate
+
+      - name: Build 3DSX and ELF
+        run: |
+          make clean
+          make
+
+      - name: Build CIA
+        run: |
+          make cia
+
+      - name: Verify outputs
+        run: |
+          test -s hoenn_reborn.3dsx
+          test -s hoenn_reborn.elf
+          test -s hoenn_reborn.cia
+
+          echo "Build successful!"
+          ls -lh hoenn_reborn.3dsx
+          ls -lh hoenn_reborn.elf
+          ls -lh hoenn_reborn.cia
+
+      - name: Upload 3DSX
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoenn-reborn-3dsx
+          path: hoenn_reborn.3dsx
+
+      - name: Upload CIA
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoenn-reborn-cia
+          path: hoenn_reborn.cia
