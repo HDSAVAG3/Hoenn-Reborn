@@ -22,7 +22,7 @@ jobs:
           dkp-pacman -S --noconfirm 3ds-dev
 
           apt-get update
-          apt-get install -y wget unzip
+          apt-get install -y wget unzip imagemagick
 
           mkdir -p /opt/devkitpro/tools/bin
 
@@ -109,7 +109,6 @@ jobs:
           LDFLAGS += -L$(DEVKITPRO)/libctru/lib
           LIBS += -lctru
 
-          # Force the same floating-point ABI for every object and the linker.
           CFLAGS += -mfloat-abi=hard -mfpu=vfp
           CXXFLAGS += -mfloat-abi=hard -mfpu=vfp
           LDFLAGS += -mfloat-abi=hard -mfpu=vfp
@@ -229,9 +228,30 @@ jobs:
           make clean
           make
 
-      - name: Fix CIA packaging
+      - name: Fix and prepare CIA packaging
         run: |
-          echo "Replacing CIA packaging script with a known-good version..."
+          echo "Checking banner image..."
+
+          if [ ! -f assets/banner/banner.png ]; then
+            echo "ERROR: Banner image not found."
+            exit 1
+          fi
+
+          identify assets/banner/banner.png
+
+          echo "Converting banner to required 256x128 size..."
+
+          mkdir -p build/cia
+
+          convert assets/banner/banner.png \
+            -resize 256x128! \
+            -background "#000000" \
+            -gravity center \
+            -extent 256x128 \
+            PNG32:build/cia/banner.png
+
+          echo "Final banner:"
+          identify build/cia/banner.png
 
           cat > tools/package_cia.sh <<'EOF'
           #!/bin/sh
@@ -245,7 +265,7 @@ jobs:
           BANNERTOOL="${BANNERTOOL:-$DEVKITPRO/tools/bin/bannertool}"
           MAKEROM="${MAKEROM:-$DEVKITPRO/tools/bin/makerom}"
 
-          BANNER_PNG="assets/banner/banner.png"
+          BANNER_PNG="build/cia/banner.png"
           ICON_PNG="assets/icon/icon.png"
           RSF="assets/hoenn_reborn.rsf"
 
@@ -266,37 +286,12 @@ jobs:
           echo "icon:       $ICON_PNG"
           echo "RSF:        $RSF"
 
-          if [ ! -f "$ELF" ]; then
-              echo "ERROR: ELF not found: $ELF"
-              exit 1
-          fi
-
-          if [ ! -x "$BANNERTOOL" ]; then
-              echo "ERROR: bannertool not found: $BANNERTOOL"
-              exit 1
-          fi
-
-          if [ ! -x "$MAKEROM" ]; then
-              echo "ERROR: makerom not found: $MAKEROM"
-              exit 1
-          fi
-
-          if [ ! -f "$BANNER_PNG" ]; then
-              echo "ERROR: Banner image not found: $BANNER_PNG"
-              exit 1
-          fi
-
-          if [ ! -f "$ICON_PNG" ]; then
-              echo "ERROR: Icon image not found: $ICON_PNG"
-              exit 1
-          fi
-
-          if [ ! -f "$RSF" ]; then
-              echo "ERROR: RSF file not found: $RSF"
-              exit 1
-          fi
-
-          mkdir -p "$CIAWORK"
+          test -f "$ELF"
+          test -x "$BANNERTOOL"
+          test -x "$MAKEROM"
+          test -f "$BANNER_PNG"
+          test -f "$ICON_PNG"
+          test -f "$RSF"
 
           echo "Creating silent banner audio..."
 
@@ -361,8 +356,7 @@ jobs:
 
           chmod +x tools/package_cia.sh
 
-          echo "Final CIA packaging script:"
-          sed -n '1,240p' tools/package_cia.sh
+          echo "CIA packaging preparation complete."
 
       - name: Build CIA
         run: |
