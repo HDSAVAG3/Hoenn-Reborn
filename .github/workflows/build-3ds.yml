@@ -96,6 +96,39 @@ jobs:
           echo "Final project contents:"
           find . -maxdepth 2 -type f | sort
 
+      - name: Fix Makefile for libctru
+        run: |
+          if [ ! -f Makefile ]; then
+            echo "ERROR: Makefile not found after extraction."
+            exit 1
+          fi
+
+          echo "Adding libctru include and library paths..."
+
+          cat >> Makefile <<'EOF'
+
+          # GitHub Actions libctru paths
+          CFLAGS += -I$(DEVKITPRO)/libctru/include
+          LDFLAGS += -L$(DEVKITPRO)/libctru/lib
+          LIBS += -lctru
+          EOF
+
+          echo "Makefile libctru configuration:"
+          tail -n 10 Makefile
+
+      - name: Verify libctru
+        run: |
+          echo "DEVKITPRO=$DEVKITPRO"
+
+          if [ ! -f "$DEVKITPRO/libctru/include/3ds.h" ]; then
+            echo "ERROR: 3ds.h was not installed."
+            find "$DEVKITPRO" -name 3ds.h -print
+            exit 1
+          fi
+
+          echo "Found libctru header:"
+          ls -l "$DEVKITPRO/libctru/include/3ds.h"
+
       - name: Validate project
         run: |
           make validate
