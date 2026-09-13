@@ -14,8 +14,18 @@ jobs:
       image: devkitpro/devkitarm:latest
 
     steps:
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # ============================================================
+      # INSTALL BUILD TOOLS
+      # ============================================================
 
       - name: Install build tools
         run: |
@@ -25,6 +35,10 @@ jobs:
           apt-get install -y wget unzip imagemagick
 
           mkdir -p /opt/devkitpro/tools/bin
+
+          # --------------------------------------------------------
+          # bannertool
+          # --------------------------------------------------------
 
           wget -q \
             https://github.com/diasurgical/bannertool/releases/download/1.2.0/bannertool.zip \
@@ -39,6 +53,10 @@ jobs:
 
           chmod +x /opt/devkitpro/tools/bin/bannertool
 
+          # --------------------------------------------------------
+          # makerom
+          # --------------------------------------------------------
+
           wget -q \
             https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18/makerom-v0.18-ubuntu_x86_64.zip \
             -O /tmp/makerom.zip
@@ -52,15 +70,31 @@ jobs:
 
           chmod +x /opt/devkitpro/tools/bin/makerom
 
+          echo "Build tools installed."
+
+          /opt/devkitpro/tools/bin/bannertool --help >/dev/null || true
+          /opt/devkitpro/tools/bin/makerom --help >/dev/null || true
+
+
+      # ============================================================
+      # LOCATE PROJECT ZIP
+      # ============================================================
+
       - name: Locate project archive
         run: |
           echo "Repository contents:"
-          find . -maxdepth 3 -type f | sort
+          find . -maxdepth 4 -type f | sort
 
-          ZIP_FILE="$(find . -type f -name 'Hoenn_Reborn_Milestone12_CIA_Ready.zip' -print -quit)"
+          ZIP_FILE="$(find . \
+            -type f \
+            -name 'Hoenn_Reborn_Milestone12_CIA_Ready.zip' \
+            -print -quit)"
 
           if [ -z "$ZIP_FILE" ]; then
-            ZIP_FILE="$(find . -type f -name '*.zip' -print -quit)"
+            ZIP_FILE="$(find . \
+              -type f \
+              -name '*.zip' \
+              -print -quit)"
           fi
 
           if [ -z "$ZIP_FILE" ]; then
@@ -72,13 +106,24 @@ jobs:
           echo "$ZIP_FILE"
 
           mkdir -p build/project
+
           unzip -q "$ZIP_FILE" -d build/project
+
+          echo "Project archive extracted."
+
+
+      # ============================================================
+      # EXTRACT PROJECT SOURCE
+      # ============================================================
 
       - name: Extract project source
         run: |
           echo "Searching for Makefile..."
 
-          MAKEFILE="$(find build/project -type f -name Makefile -print -quit)"
+          MAKEFILE="$(find build/project \
+            -type f \
+            -name Makefile \
+            -print -quit)"
 
           if [ -z "$MAKEFILE" ]; then
             echo "ERROR: Makefile was not found."
@@ -93,7 +138,12 @@ jobs:
           cp -a "$PROJECT_DIR"/. .
 
           echo "Final project contents:"
-          find . -maxdepth 2 -type f | sort
+          find . -maxdepth 3 -type f | sort
+
+
+      # ============================================================
+      # FIX MAKEFILE FOR LIBCTRU
+      # ============================================================
 
       - name: Fix Makefile for libctru
         run: |
@@ -108,6 +158,13 @@ jobs:
           LDFLAGS += -mfloat-abi=hard -mfpu=vfp
           EOF
 
+          echo "Makefile fixes added."
+
+
+      # ============================================================
+      # FIX OLD CONSOLE SELECTION
+      # ============================================================
+
       - name: Fix old console selection
         run: |
           if [ -f src/main.c ]; then
@@ -117,6 +174,13 @@ jobs:
           if [ -f src/touch_ui.c ]; then
             sed -i '/consoleSelect(&consoles\[1\]);/d' src/touch_ui.c
           fi
+
+          echo "Old console selection fixed."
+
+
+      # ============================================================
+      # FIX PLAYER SPRITE COMPATIBILITY
+      # ============================================================
 
       - name: Fix player sprite compatibility
         run: |
@@ -151,7 +215,9 @@ jobs:
               if (!s) return "@";
 
               if (s->moving) {
-                  if (s->facing == DIR_LEFT || s->facing == DIR_RIGHT) {
+                  if (s->facing == DIR_LEFT ||
+                      s->facing == DIR_RIGHT) {
+
                       return (s->frame == 1)
                           ? "@"
                           : (s->frame == 0 ? "/" : "\\");
@@ -165,21 +231,40 @@ jobs:
               switch (s->facing) {
                   case DIR_UP:
                       return "^";
+
                   case DIR_LEFT:
                       return "<";
+
                   case DIR_RIGHT:
                       return ">";
+
                   default:
                       return "@";
               }
           }
           EOF
 
+          echo "Player sprite compatibility fixed."
+
+
+      # ============================================================
+      # FIX RGB565 DEFINITION CONFLICT
+      # ============================================================
+
       - name: Fix RGB565 definition conflict
         run: |
           if [ -f src/scene_renderer.c ]; then
-            sed -i '/^[[:space:]]*#define RGB565(r,g,b)/d' src/scene_renderer.c
+            sed -i \
+              '/^[[:space:]]*#define RGB565(r,g,b)/d' \
+              src/scene_renderer.c
           fi
+
+          echo "RGB565 conflict fixed."
+
+
+      # ============================================================
+      # VERIFY LIBCTRU
+      # ============================================================
 
       - name: Verify libctru
         run: |
@@ -189,21 +274,46 @@ jobs:
 
           echo "libctru found successfully."
 
+
+      # ============================================================
+      # VALIDATE PROJECT
+      # ============================================================
+
       - name: Validate project
         run: |
           make validate
+
+
+      # ============================================================
+      # BUILD 3DSX AND ELF
+      # ============================================================
 
       - name: Build 3DSX and ELF
         run: |
           make clean
           make
 
+
+      # ============================================================
+      # PREPARE CIA PACKAGING
+      # ============================================================
+
       - name: Prepare CIA packaging
         run: |
+
           mkdir -p build/cia
 
+          # --------------------------------------------------------
+          # CHECK BANNER
+          # --------------------------------------------------------
+
           echo "Checking original banner..."
+
           identify assets/banner/banner.png
+
+          # --------------------------------------------------------
+          # RESIZE BANNER
+          # --------------------------------------------------------
 
           echo "Converting banner to 256x128..."
 
@@ -215,10 +325,83 @@ jobs:
             PNG32:build/cia/banner.png
 
           echo "Final banner:"
+
           identify build/cia/banner.png
+
+
+          # ========================================================
+          # CREATE CLEAN RSF
+          # ========================================================
+
+          echo "Creating clean Makerom RSF..."
+
+          cat > build/cia/hoenn_reborn.rsf <<'EOF'
+          BasicInfo:
+            Title : "Pokemon Emerald: Hoenn Reborn"
+            CompanyCode : "00"
+            ProductCode : "CTR-P-HRBN"
+            ContentType : Application
+            Logo : Homebrew
+
+          TitleInfo:
+            UniqueId : 0xF0E01
+            Category : Application
+
+          Option:
+            UseOnSD : true
+            FreeProductCode : true
+            MediaFootPadding : false
+            EnableCrypt : false
+            EnableCompress : true
+
+          AccessControlInfo:
+            FileSystemAccess:
+              - DirectSdmc
+
+            IdealProcessor : 0
+            AffinityMask : 1
+            Priority : 16
+            MaxCpu : 0x9E
+
+            DisableDebug : false
+            EnableForceDebug : false
+            CanWriteSharedPage : false
+            CanUsePrivilegedPriority : false
+            CanUseNonAlphabetAndNumber : false
+            PermitMainFunctionArgument : false
+            CanShareDeviceMemory : false
+            RunnableOnSleep : false
+            SpecialMemoryArrange : false
+
+            CoreVersion : 2
+            DescVersion : 2
+            MemoryType : Application
+            HandleTableSize : 512
+
+          SystemControlInfo:
+            SaveDataSize : 1M
+            RemasterVersion : 0
+            StackSize : 0x40000
+          EOF
+
+          echo "Clean RSF created."
+
+          echo "----------------------------------------"
+          echo "RSF contents:"
+          echo "----------------------------------------"
+
+          cat build/cia/hoenn_reborn.rsf
+
+          echo "----------------------------------------"
+
+
+          # ========================================================
+          # CREATE CIA PACKAGING SCRIPT
+          # ========================================================
 
           cat > tools/package_cia.sh <<'EOF'
           #!/bin/sh
+
           set -eu
 
           ELF="${1:-hoenn_reborn.elf}"
@@ -229,13 +412,18 @@ jobs:
           BANNERTOOL="${BANNERTOOL:-$DEVKITPRO/tools/bin/bannertool}"
           MAKEROM="${MAKEROM:-$DEVKITPRO/tools/bin/makerom}"
 
-          BANNER_PNG="build/cia/banner.png"
-          ICON_PNG="assets/icon/icon.png"
-
           CIAWORK="build/cia"
+
+          BANNER_PNG="$CIAWORK/banner.png"
           BANNER_BNR="$CIAWORK/banner.bnr"
+
+          ICON_PNG="assets/icon/icon.png"
           ICON_ICN="$CIAWORK/icon.icn"
+
           SILENCE_WAV="$CIAWORK/silence.wav"
+
+          RSF="$CIAWORK/hoenn_reborn.rsf"
+
 
           echo "=========================================="
           echo "Hoenn Reborn CIA packaging"
@@ -245,12 +433,24 @@ jobs:
           echo "CIA:        $CIA"
           echo "bannertool: $BANNERTOOL"
           echo "makerom:    $MAKEROM"
+          echo "RSF:        $RSF"
+
+
+          # --------------------------------------------------------
+          # VERIFY FILES
+          # --------------------------------------------------------
 
           test -f "$ELF"
           test -x "$BANNERTOOL"
           test -x "$MAKEROM"
           test -f "$BANNER_PNG"
           test -f "$ICON_PNG"
+          test -f "$RSF"
+
+
+          # --------------------------------------------------------
+          # CREATE SILENT WAV
+          # --------------------------------------------------------
 
           echo "Creating silent banner audio..."
 
@@ -274,6 +474,11 @@ jobs:
           print("Created:", output)
           PY
 
+
+          # --------------------------------------------------------
+          # CREATE ICON
+          # --------------------------------------------------------
+
           echo "Creating icon..."
 
           "$BANNERTOOL" makesmdh \
@@ -283,6 +488,11 @@ jobs:
               -i "$ICON_PNG" \
               -o "$ICON_ICN"
 
+
+          # --------------------------------------------------------
+          # CREATE BANNER
+          # --------------------------------------------------------
+
           echo "Creating banner..."
 
           "$BANNERTOOL" makebanner \
@@ -290,11 +500,17 @@ jobs:
               -a "$SILENCE_WAV" \
               -o "$BANNER_BNR"
 
+
+          # --------------------------------------------------------
+          # CREATE CIA
+          # --------------------------------------------------------
+
           echo "Creating CIA..."
 
           "$MAKEROM" \
               -f cia \
               -o "$CIA" \
+              -rsf "$RSF" \
               -target t \
               -exefslogo \
               -elf "$ELF" \
@@ -302,25 +518,42 @@ jobs:
               -banner "$BANNER_BNR" \
               -desc app:4
 
+
+          # --------------------------------------------------------
+          # VERIFY CIA
+          # --------------------------------------------------------
+
           if [ ! -s "$CIA" ]; then
               echo "ERROR: CIA was not created."
               exit 1
           fi
+
 
           echo "=========================================="
           echo "CIA CREATED SUCCESSFULLY"
           echo "=========================================="
 
           ls -lh "$CIA"
+
           EOF
 
           chmod +x tools/package_cia.sh
 
           echo "CIA packaging preparation complete."
 
+
+      # ============================================================
+      # BUILD CIA
+      # ============================================================
+
       - name: Build CIA
         run: |
           make cia
+
+
+      # ============================================================
+      # VERIFY FINAL OUTPUTS
+      # ============================================================
 
       - name: Verify outputs
         run: |
@@ -343,12 +576,22 @@ jobs:
           echo "CIA:"
           ls -lh hoenn_reborn.cia
 
+
+      # ============================================================
+      # UPLOAD 3DSX
+      # ============================================================
+
       - name: Upload 3DSX
         uses: actions/upload-artifact@v4
         with:
           name: hoenn-reborn-3dsx
           path: hoenn_reborn.3dsx
           retention-days: 30
+
+
+      # ============================================================
+      # UPLOAD CIA
+      # ============================================================
 
       - name: Upload CIA
         uses: actions/upload-artifact@v4
