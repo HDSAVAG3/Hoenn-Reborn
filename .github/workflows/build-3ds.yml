@@ -108,9 +108,15 @@ jobs:
           CFLAGS += -I$(DEVKITPRO)/libctru/include
           LDFLAGS += -L$(DEVKITPRO)/libctru/lib
           LIBS += -lctru
+
+          # Use the same floating-point ABI for every object and the linker.
+          CFLAGS += -mfloat-abi=hard -mfpu=vfp
+          CXXFLAGS += -mfloat-abi=hard -mfpu=vfp
+          LDFLAGS += -mfloat-abi=hard -mfpu=vfp
           EOF
 
-          echo "libctru configuration added."
+          echo "Final compatibility flags:"
+          tail -n 15 Makefile
 
       - name: Fix old console selection
         run: |
@@ -118,8 +124,12 @@ jobs:
             sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
           fi
 
-          echo "main.c console references:"
-          grep -n "consoleSelect\|consoleInit" src/main.c || true
+          if [ -f src/touch_ui.c ]; then
+            sed -i '/consoleSelect(&consoles\[1\]);/d' src/touch_ui.c
+          fi
+
+          echo "Console references:"
+          grep -R -n "consoleSelect.*consoles" src || true
 
       - name: Fix player sprite compatibility
         run: |
@@ -188,17 +198,14 @@ jobs:
 
           echo "player_sprite.c compatibility patch complete."
 
-      - name: Fix touch UI console selection
+      - name: Fix RGB565 definition conflict
         run: |
-          if [ ! -f src/touch_ui.c ]; then
-            echo "ERROR: src/touch_ui.c not found."
-            exit 1
+          if [ -f src/scene_renderer.c ]; then
+            sed -i '/^[[:space:]]*#define RGB565(r,g,b)/d' src/scene_renderer.c
           fi
 
-          sed -i '/consoleSelect(&consoles\[1\]);/d' src/touch_ui.c
-
-          echo "touch_ui.c console references:"
-          grep -n "consoleSelect\|consoleInit" src/touch_ui.c || true
+          echo "RGB565 compatibility check:"
+          grep -n "RGB565" src/scene_renderer.c || true
 
       - name: Verify libctru
         run: |
@@ -236,8 +243,13 @@ jobs:
           echo "BUILD SUCCESSFUL"
           echo "=================================="
 
+          echo "3DSX:"
           ls -lh hoenn_reborn.3dsx
+
+          echo "ELF:"
           ls -lh hoenn_reborn.elf
+
+          echo "CIA:"
           ls -lh hoenn_reborn.cia
 
       - name: Upload 3DSX
