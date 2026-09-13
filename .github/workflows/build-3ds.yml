@@ -111,9 +111,6 @@ jobs:
           LIBS += -lctru
           EOF
 
-          echo "Makefile libctru configuration:"
-          tail -n 10 Makefile
-
       - name: Fix old console selection
         run: |
           if [ ! -f src/main.c ]; then
@@ -121,12 +118,24 @@ jobs:
             exit 1
           fi
 
-          echo "Removing obsolete consoleSelect(&consoles[1]) line..."
-
           sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
 
-          echo "Checking main.c:"
+          echo "Console selection after patch:"
           grep -n "consoleSelect\|consoleInit" src/main.c || true
+
+      - name: Fix player sprite compatibility
+        run: |
+          if [ ! -f src/player_sprite.c ]; then
+            echo "ERROR: src/player_sprite.c not found."
+            exit 1
+          fi
+
+          echo "Checking player_sprite.c for obsolete moving field..."
+
+          sed -i 's/if (p->moving) {/if (p->vx != 0 || p->vy != 0) {/' src/player_sprite.c
+
+          echo "Relevant player sprite code:"
+          grep -n "moving\|vx\|vy" src/player_sprite.c || true
 
       - name: Verify libctru
         run: |
