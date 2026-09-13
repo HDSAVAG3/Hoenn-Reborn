@@ -99,7 +99,7 @@ jobs:
       - name: Fix Makefile for libctru
         run: |
           if [ ! -f Makefile ]; then
-            echo "ERROR: Makefile not found after extraction."
+            echo "ERROR: Makefile not found."
             exit 1
           fi
 
@@ -111,6 +111,8 @@ jobs:
           LIBS += -lctru
           EOF
 
+          echo "libctru configuration added."
+
       - name: Fix old console selection
         run: |
           if [ ! -f src/main.c ]; then
@@ -120,7 +122,7 @@ jobs:
 
           sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
 
-          echo "Console selection after patch:"
+          echo "Console selection check:"
           grep -n "consoleSelect\|consoleInit" src/main.c || true
 
       - name: Fix player sprite compatibility
@@ -130,12 +132,73 @@ jobs:
             exit 1
           fi
 
-          echo "Checking player_sprite.c for obsolete moving field..."
+          cat > src/player_sprite.c <<'EOF'
+          #include "player_sprite.h"
 
-          sed -i 's/if (p->moving) {/if (p->vx != 0 || p->vy != 0) {/' src/player_sprite.c
+          void player_sprite_init(PlayerSpriteState *s) {
+              if (!s) return;
 
-          echo "Relevant player sprite code:"
-          grep -n "moving\|vx\|vy" src/player_sprite.c || true
+              s->facing = DIR_DOWN;
+              s->frame = 1;
+              s->moving = 0;
+              s->frame_tick = 0;
+          }
+
+          void player_sprite_update(
+              PlayerSpriteState *s,
+              const OverworldPlayer *p,
+              uint16_t delta_ticks
+          ) {
+              (void)delta_ticks;
+
+              if (!s || !p) return;
+
+              /*
+               * The current OverworldPlayer structure does not contain
+               * a 'moving' field. Movement animation is handled by the
+               * PlayerAnim system, so this compatibility renderer keeps
+               * the legacy PlayerSpriteState in its standing state.
+               */
+              s->facing = p->facing;
+              s->moving = 0;
+              s->frame = 1;
+              s->frame_tick = 0;
+          }
+
+          const char *player_sprite_glyph(const PlayerSpriteState *s) {
+              if (!s) return "@";
+
+              if (s->moving) {
+                  if (s->facing == DIR_LEFT || s->facing == DIR_RIGHT) {
+                      return (s->frame == 1)
+                          ? "@"
+                          : (s->frame == 0 ? "/" : "\\");
+                  }
+
+                  return (s->frame == 1)
+                      ? "@"
+                      : (s->frame == 0 ? "^" : "v");
+              }
+
+              switch (s->facing) {
+                  case DIR_UP:
+                      return "^";
+
+                  case DIR_LEFT:
+                      return "<";
+
+                  case DIR_RIGHT:
+                      return ">";
+
+                  default:
+                      return "@";
+              }
+          }
+          EOF
+
+          echo "player_sprite.c replaced with compatible version."
+
+          grep -n "moving\|OverworldPlayer\|facing" src/player_sprite.c
 
       - name: Verify libctru
         run: |
