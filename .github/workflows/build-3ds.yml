@@ -105,7 +105,6 @@ jobs:
 
           cat >> Makefile <<'EOF'
 
-          # GitHub Actions libctru paths
           CFLAGS += -I$(DEVKITPRO)/libctru/include
           LDFLAGS += -L$(DEVKITPRO)/libctru/lib
           LIBS += -lctru
@@ -115,14 +114,11 @@ jobs:
 
       - name: Fix old console selection
         run: |
-          if [ ! -f src/main.c ]; then
-            echo "ERROR: src/main.c not found."
-            exit 1
+          if [ -f src/main.c ]; then
+            sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
           fi
 
-          sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
-
-          echo "Console selection check:"
+          echo "main.c console references:"
           grep -n "consoleSelect\|consoleInit" src/main.c || true
 
       - name: Fix player sprite compatibility
@@ -153,12 +149,6 @@ jobs:
 
               if (!s || !p) return;
 
-              /*
-               * The current OverworldPlayer structure does not contain
-               * a 'moving' field. Movement animation is handled by the
-               * PlayerAnim system, so this compatibility renderer keeps
-               * the legacy PlayerSpriteState in its standing state.
-               */
               s->facing = p->facing;
               s->moving = 0;
               s->frame = 1;
@@ -196,9 +186,19 @@ jobs:
           }
           EOF
 
-          echo "player_sprite.c replaced with compatible version."
+          echo "player_sprite.c compatibility patch complete."
 
-          grep -n "moving\|OverworldPlayer\|facing" src/player_sprite.c
+      - name: Fix touch UI console selection
+        run: |
+          if [ ! -f src/touch_ui.c ]; then
+            echo "ERROR: src/touch_ui.c not found."
+            exit 1
+          fi
+
+          sed -i '/consoleSelect(&consoles\[1\]);/d' src/touch_ui.c
+
+          echo "touch_ui.c console references:"
+          grep -n "consoleSelect\|consoleInit" src/touch_ui.c || true
 
       - name: Verify libctru
         run: |
