@@ -103,8 +103,6 @@ jobs:
             exit 1
           fi
 
-          echo "Adding libctru include and library paths..."
-
           cat >> Makefile <<'EOF'
 
           # GitHub Actions libctru paths
@@ -115,6 +113,20 @@ jobs:
 
           echo "Makefile libctru configuration:"
           tail -n 10 Makefile
+
+      - name: Fix old console selection
+        run: |
+          if [ ! -f src/main.c ]; then
+            echo "ERROR: src/main.c not found."
+            exit 1
+          fi
+
+          echo "Removing obsolete consoleSelect(&consoles[1]) line..."
+
+          sed -i '/consoleSelect(&consoles\[1\]);/d' src/main.c
+
+          echo "Checking main.c:"
+          grep -n "consoleSelect\|consoleInit" src/main.c || true
 
       - name: Verify libctru
         run: |
