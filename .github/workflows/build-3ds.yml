@@ -9,11 +9,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     container:
       image: devkitpro/devkitarm:latest
 
     steps:
-      - name: Install tools
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
         run: |
           apt-get update
           apt-get install -y wget unzip
@@ -26,7 +30,9 @@ jobs:
 
           unzip -o /tmp/bannertool.zip -d /tmp/bannertool
 
-          find /tmp/bannertool -type f -name bannertool \
+          find /tmp/bannertool \
+            -type f \
+            -name bannertool \
             -exec cp {} /opt/devkitpro/tools/bin/bannertool \;
 
           chmod +x /opt/devkitpro/tools/bin/bannertool
@@ -37,24 +43,56 @@ jobs:
 
           unzip -o /tmp/makerom.zip -d /tmp/makerom
 
-          find /tmp/makerom -type f -name makerom \
+          find /tmp/makerom \
+            -type f \
+            -name makerom \
             -exec cp {} /opt/devkitpro/tools/bin/makerom \;
 
           chmod +x /opt/devkitpro/tools/bin/makerom
 
-      - name: Extract project
+      - name: Locate project archive
         run: |
-          unzip -q Hoenn_Reborn_Milestone12_CIA_Ready.zip
+          echo "Repository contents:"
+          find . -maxdepth 3 -type f | sort
 
-          PROJECT_DIR=$(find . -maxdepth 2 -type d -name "Hoenn_Reborn_FinalProgress" | head -n 1)
+          ZIP_FILE="$(find . -type f -name 'Hoenn_Reborn_Milestone12_CIA_Ready.zip' -print -quit)"
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Project directory not found"
+          if [ -z "$ZIP_FILE" ]; then
+            ZIP_FILE="$(find . -type f -name '*.zip' -print -quit)"
+          fi
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No project ZIP found."
             exit 1
           fi
 
+          echo "Found project archive:"
+          echo "$ZIP_FILE"
+
+          mkdir -p build/project
+          unzip -q "$ZIP_FILE" -d build/project
+
+      - name: Extract project source
+        run: |
+          echo "Searching for Makefile..."
+
+          MAKEFILE="$(find build/project -type f -name Makefile -print -quit)"
+
+          if [ -z "$MAKEFILE" ]; then
+            echo "ERROR: Makefile was not found."
+            find build/project -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$MAKEFILE")"
+
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
           cp -a "$PROJECT_DIR"/. .
-          rm -rf "$PROJECT_DIR"
+
+          echo "Final project contents:"
+          find . -maxdepth 2 -type f | sort
 
       - name: Validate project
         run: |
@@ -75,7 +113,10 @@ jobs:
           test -s hoenn_reborn.elf
           test -s hoenn_reborn.cia
 
-          echo "Build successful!"
+          echo "=================================="
+          echo "BUILD SUCCESSFUL"
+          echo "=================================="
+
           ls -lh hoenn_reborn.3dsx
           ls -lh hoenn_reborn.elf
           ls -lh hoenn_reborn.cia
@@ -91,3 +132,4 @@ jobs:
         with:
           name: hoenn-reborn-cia
           path: hoenn_reborn.cia
+          retention-days: 30
