@@ -109,14 +109,14 @@ jobs:
           LDFLAGS += -L$(DEVKITPRO)/libctru/lib
           LIBS += -lctru
 
-          # Use the same floating-point ABI for every object and the linker.
+          # Force the same floating-point ABI for every object and the linker.
           CFLAGS += -mfloat-abi=hard -mfpu=vfp
           CXXFLAGS += -mfloat-abi=hard -mfpu=vfp
           LDFLAGS += -mfloat-abi=hard -mfpu=vfp
           EOF
 
           echo "Final compatibility flags:"
-          tail -n 15 Makefile
+          tail -n 20 Makefile
 
       - name: Fix old console selection
         run: |
@@ -229,12 +229,149 @@ jobs:
           make clean
           make
 
+      - name: Fix CIA packaging
+        run: |
+          echo "Replacing CIA packaging script with a known-good version..."
+
+          cat > tools/package_cia.sh <<'EOF'
+          #!/bin/sh
+          set -eu
+
+          ELF="${1:-hoenn_reborn.elf}"
+          CIA="${2:-hoenn_reborn.cia}"
+
+          DEVKITPRO="${DEVKITPRO:-/opt/devkitpro}"
+
+          BANNERTOOL="${BANNERTOOL:-$DEVKITPRO/tools/bin/bannertool}"
+          MAKEROM="${MAKEROM:-$DEVKITPRO/tools/bin/makerom}"
+
+          BANNER_PNG="assets/banner/banner.png"
+          ICON_PNG="assets/icon/icon.png"
+          RSF="assets/hoenn_reborn.rsf"
+
+          CIAWORK="build/cia"
+          BANNER_BNR="$CIAWORK/banner.bnr"
+          ICON_ICN="$CIAWORK/icon.icn"
+          SILENCE_WAV="$CIAWORK/silence.wav"
+
+          echo "=========================================="
+          echo "Hoenn Reborn CIA packaging"
+          echo "=========================================="
+
+          echo "ELF:        $ELF"
+          echo "CIA:        $CIA"
+          echo "bannertool: $BANNERTOOL"
+          echo "makerom:    $MAKEROM"
+          echo "banner:     $BANNER_PNG"
+          echo "icon:       $ICON_PNG"
+          echo "RSF:        $RSF"
+
+          if [ ! -f "$ELF" ]; then
+              echo "ERROR: ELF not found: $ELF"
+              exit 1
+          fi
+
+          if [ ! -x "$BANNERTOOL" ]; then
+              echo "ERROR: bannertool not found: $BANNERTOOL"
+              exit 1
+          fi
+
+          if [ ! -x "$MAKEROM" ]; then
+              echo "ERROR: makerom not found: $MAKEROM"
+              exit 1
+          fi
+
+          if [ ! -f "$BANNER_PNG" ]; then
+              echo "ERROR: Banner image not found: $BANNER_PNG"
+              exit 1
+          fi
+
+          if [ ! -f "$ICON_PNG" ]; then
+              echo "ERROR: Icon image not found: $ICON_PNG"
+              exit 1
+          fi
+
+          if [ ! -f "$RSF" ]; then
+              echo "ERROR: RSF file not found: $RSF"
+              exit 1
+          fi
+
+          mkdir -p "$CIAWORK"
+
+          echo "Creating silent banner audio..."
+
+          python3 - "$SILENCE_WAV" <<'PY'
+          import sys
+          import wave
+
+          output = sys.argv[1]
+
+          sample_rate = 22050
+          seconds = 3
+          frames = b"\x00\x00" * (sample_rate * seconds)
+
+          with wave.open(output, "wb") as wav:
+              wav.setnchannels(1)
+              wav.setsampwidth(2)
+              wav.setframerate(sample_rate)
+              wav.writeframes(frames)
+
+          print("Created:", output)
+          PY
+
+          echo "Creating icon..."
+
+          "$BANNERTOOL" makesmdh \
+              -s "Hoenn Reborn" \
+              -l "Pokemon Emerald: Hoenn Reborn" \
+              -p "HDSAVAG3" \
+              -i "$ICON_PNG" \
+              -o "$ICON_ICN"
+
+          echo "Creating banner..."
+
+          "$BANNERTOOL" makebanner \
+              -i "$BANNER_PNG" \
+              -a "$SILENCE_WAV" \
+              -o "$BANNER_BNR"
+
+          echo "Creating CIA..."
+
+          "$MAKEROM" \
+              -f cia \
+              -o "$CIA" \
+              -target t \
+              -exefslogo \
+              -elf "$ELF" \
+              -rsf "$RSF" \
+              -icon "$ICON_ICN" \
+              -banner "$BANNER_BNR"
+
+          if [ ! -s "$CIA" ]; then
+              echo "ERROR: CIA was not created."
+              exit 1
+          fi
+
+          echo "=========================================="
+          echo "CIA CREATED SUCCESSFULLY"
+          echo "=========================================="
+
+          ls -lh "$CIA"
+          EOF
+
+          chmod +x tools/package_cia.sh
+
+          echo "Final CIA packaging script:"
+          sed -n '1,240p' tools/package_cia.sh
+
       - name: Build CIA
         run: |
           make cia
 
       - name: Verify outputs
         run: |
+          echo "Checking final build files..."
+
           test -s hoenn_reborn.3dsx
           test -s hoenn_reborn.elf
           test -s hoenn_reborn.cia
@@ -257,6 +394,7 @@ jobs:
         with:
           name: hoenn-reborn-3dsx
           path: hoenn_reborn.3dsx
+          retention-days: 30
 
       - name: Upload CIA
         uses: actions/upload-artifact@v4
